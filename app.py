@@ -1,0 +1,93 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "081d11f7-9d35-4297-8b3a-fe5fd178f663",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "from fastapi import FastAPI\n",
+    "from pydantic import BaseModel\n",
+    "import joblib\n",
+    "import numpy as np\n",
+    "from sklearn.preprocessing import RobustScaler\n",
+    "\n",
+    "# Загрузка модели и других необходимых объектов\n",
+    "model = joblib.load(\"random_forest_model.pkl\")\n",
+    "scaler = joblib.load(\"scaler.pkl\")  # Загружаем обученный скейлер (RobustScaler)\n",
+    "label_encoders = joblib.load(\"label_encoders.pkl\")  # Загружаем лейбл энкодеры\n",
+    "\n",
+    "# Определение атрибутов, которые будут передаваться на вход API\n",
+    "class UserInput(BaseModel):\n",
+    "    hit_number: int\n",
+    "    visit_number: int\n",
+    "    device_category: str\n",
+    "    device_os: str\n",
+    "    device_brand: str\n",
+    "    device_browser: str\n",
+    "    geo_country: str\n",
+    "    geo_city: str\n",
+    "    utm_source: str\n",
+    "    utm_medium: str\n",
+    "    utm_campaign: str\n",
+    "    utm_adcontent: str\n",
+    "\n",
+    "# Инициализация FastAPI\n",
+    "app = FastAPI()\n",
+    "\n",
+    "# Функция для предсказания\n",
+    "def preprocess_and_predict(data: UserInput):\n",
+    "    # Преобразование входных данных в нужный формат\n",
+    "    input_data = np.array([[data.hit_number, data.visit_number, data.device_category,\n",
+    "                            data.device_os, data.device_brand, data.device_browser,\n",
+    "                            data.geo_country, data.geo_city, data.utm_source,\n",
+    "                            data.utm_medium, data.utm_campaign, data.utm_adcontent]])\n",
+    "\n",
+    "    # Преобразование категориальных признаков с помощью LabelEncoder\n",
+    "    for i, col in enumerate(['device_category', 'device_os', 'device_brand', 'device_browser',\n",
+    "                            'geo_country', 'geo_city', 'utm_source', 'utm_medium', \n",
+    "                            'utm_campaign', 'utm_adcontent']):\n",
+    "        input_data[:, i] = label_encoders[col].transform(input_data[:, i])\n",
+    "\n",
+    "    # Масштабирование данных\n",
+    "    input_data_scaled = scaler.transform(input_data)\n",
+    "\n",
+    "    # Предсказание\n",
+    "    prediction_proba = model.predict_proba(input_data_scaled)[:, 1]\n",
+    "\n",
+    "    # Превращаем вероятность в метку 0/1\n",
+    "    prediction = int(prediction_proba >= 0.5)\n",
+    "\n",
+    "    return prediction\n",
+    "\n",
+    "# Маршрут для предсказания\n",
+    "@app.post(\"/predict\")\n",
+    "def predict(user_input: UserInput):\n",
+    "    prediction = preprocess_and_predict(user_input)\n",
+    "    return {\"prediction\": prediction}"
+   ]
+  }
+ ],
+ "metadata": {
+  "kernelspec": {
+   "display_name": "Python 3 (ipykernel)",
+   "language": "python",
+   "name": "python3"
+  },
+  "language_info": {
+   "codemirror_mode": {
+    "name": "ipython",
+    "version": 3
+   },
+   "file_extension": ".py",
+   "mimetype": "text/x-python",
+   "name": "python",
+   "nbconvert_exporter": "python",
+   "pygments_lexer": "ipython3",
+   "version": "3.11.7"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
